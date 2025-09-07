@@ -1,0 +1,16 @@
+name: mlflow-iris
+
+docker_env:
+  image: mlflow:latest  # Имя Docker-образа
+  volumes: ["/host/data:/container/data"]  # Маппинг томов
+  environment:
+    - ["MLFLOW_TRACKING_URI", "http://localhost:5000"]
+
+entry_points:
+  main:
+    parameters:
+      model: {type: str, default: "randfor"}
+      scaler: {type: str, default: "standard"}
+      features: {type: str, default: "base"}
+      seed: {type: int, default: 42}
+    command: "python train.py"
