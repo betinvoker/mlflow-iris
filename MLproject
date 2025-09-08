@@ -1,0 +1,22 @@
+name: mlflow-iris
+docker_env:
+  image: mlflow:latest
+  volumes:
+    - /host/data:/container/data
+entry_points:
+  main:
+    parameters:
+      model:
+        type: str
+        default: randfor
+      scaler:
+        type: str
+        default: standard
+      features:
+        type: str
+        default: base
+      seed:
+        type: int
+        default: 42
+    command: python train.py --model {model} --scaler {scaler} --features {features}
+      --seed {seed}

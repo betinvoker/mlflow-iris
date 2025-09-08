@@ -1,242 +1,271 @@
+import argparse
+import warnings
+warnings.filterwarnings('ignore')
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split, cross_val_score, KFold
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, PolynomialFeatures
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, classification_report
+from sklearn.inspection import permutation_importance
 import mlflow
 import mlflow.sklearn
-from mlflow.models.signature import infer_signature
-from sklearn.datasets import load_iris
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, 
-    f1_score, confusion_matrix, classification_report
-)
-import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
-import tempfile
-import os
-import argparse
+from mlflow.models import infer_signature
 
-#   Парсинг аргументов командной строки
-def parse_args():
-    parser = argparse.ArgumentParser(description="Training models on the Iris dataset")
+def load_data():
+    """Загрузка и подготовка данных Iris"""
+    iris = load_iris()
+    X = pd.DataFrame(iris.data, columns=iris.feature_names)
+    y = pd.Series(iris.target, name='target')
+    return X, y, iris.target_names
 
-    parser.add_argument("--model", type=str, default="randfor", choices=["randfor","logreg","knn"], help="Data training model[randfor|logreg|knn]")
-    parser.add_argument("--scaler", type=str, default="standard",  choices=["standard", "minmax", "none"], help="Data normalization[standard|minmax|none]")
-    parser.add_argument("--features", type=str, default="base",  choices=["base", "extended"], help="Features[base|extended]")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    
-    return parser.parse_args()
-
-def get_scaler(scaler_type):
-    """Возвращает scaler по типу"""
-    if scaler_type == "standard":
-        return StandardScaler()
-    elif scaler_type == "minmax":
-        return MinMaxScaler()
-    elif scaler_type == "none":
-        return None
+def create_features(X, feature_type, scaler_type=None):
+    """Создание признаков в зависимости от типа"""
+    if feature_type == 'base':
+        X_processed = X.copy()
+    elif feature_type == 'scaled':
+        if scaler_type == 'standard':
+            scaler = StandardScaler()
+        elif scaler_type == 'minmax':
+            scaler = MinMaxScaler()
+        else:
+            scaler = StandardScaler()
+        X_processed = scaler.fit_transform(X)
+        X_processed = pd.DataFrame(X_processed, columns=X.columns)
+    elif feature_type == 'poly':
+        poly = PolynomialFeatures(degree=2, interaction_only=False, include_bias=False)
+        X_processed = poly.fit_transform(X)
+        feature_names = poly.get_feature_names_out(X.columns)
+        X_processed = pd.DataFrame(X_processed, columns=feature_names)
     else:
-        raise ValueError(f"Unknown scaler type: {scaler_type}")
+        X_processed = X.copy()
+    
+    return X_processed
 
-def engineer_features(X, feature_names, feature_set):
-    """Создание дополнительных признаков"""
-    if feature_set == "base":
-        return X, feature_names
-    
-    # Extended features
-    X_extended = np.copy(X)
-    extended_names = list(feature_names)
-    
-    # Добавляем квадраты признаков
-    for i in range(X.shape[1]):
-        X_extended = np.column_stack([X_extended, X[:, i]**2])
-        extended_names.append(f"{feature_names[i]}^2")
-    
-    # Добавляем произведения признаков
-    for i in range(X.shape[1]):
-        for j in range(i+1, X.shape[1]):
-            X_extended = np.column_stack([X_extended, X[:, i] * X[:, j]])
-            extended_names.append(f"{feature_names[i]}*{feature_names[j]}")
-    
-    return X_extended, extended_names
-
-def get_model(model_type, seed):
-    if model_type == "randfor":
-        return RandomForestClassifier(
-            n_estimators=100,
-            max_depth=5,
-            random_state=seed,
-            n_jobs=-1
-        ), {
-            'model_type': 'RandomForest',
-            'n_estimators': 100,
-            'max_depth': 5
-        }
-    elif model_type == "logreg":
-        return LogisticRegression(
-            random_state=seed,
-            max_iter=1000,
-            multi_class='multinomial',
-            solver='lbfgs'
-        ), {
-            'model_type': 'LogisticRegression',
-            'max_iter': 1000,
-            'multi_class': 'multinomial',
-            'solver': 'lbfgs'
-        }
-    elif model_type == "knn":
-        return KNeighborsClassifier(
-            n_neighbors=5
-        ), {
-            'model_type': 'KNeighbors',
-            'n_neighbors': 5
-        }
+def get_model(model_name, seed=42):
+    """Получение модели по имени"""
+    if model_name == 'logreg':
+        if seed:
+            return LogisticRegression(random_state=seed, max_iter=1000, multi_class='ovr')
+        return LogisticRegression(max_iter=1000, multi_class='ovr')
+    elif model_name == 'randomforest':
+        if seed:
+            return RandomForestClassifier(random_state=seed, n_estimators=100)
+        return RandomForestClassifier(n_estimators=100)
+    elif model_name == 'knn':
+        return KNeighborsClassifier(n_neighbors=5)
     else:
-        raise ValueError(f"Unknown model type: {model_type}")
+        raise ValueError(f"Unknown model: {model_name}")
 
-def train_model(args):
-    """Обучение модели с заданными параметрами"""
+def plot_confusion_matrix(y_true, y_pred, class_names):
+    """Построение матрицы ошибок"""
+    cm = confusion_matrix(y_true, y_pred)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                xticklabels=class_names, yticklabels=class_names)
+    plt.title('Confusion Matrix')
+    plt.ylabel('True Label')
+    plt.xlabel('Predicted Label')
+    plt.tight_layout()
+    return plt.gcf()
+
+def plot_feature_importance(model, feature_names, model_name):
+    """Построение важности признаков"""
+    plt.figure(figsize=(10, 6))
+    
+    if hasattr(model, 'feature_importances_'):
+        # Для RandomForest
+        importances = model.feature_importances_
+        indices = np.argsort(importances)[::-1]
+        plt.bar(range(len(importances)), importances[indices])
+        plt.xticks(range(len(importances)), [feature_names[i] for i in indices], rotation=45)
+        plt.title('Feature Importances')
+    
+    elif hasattr(model, 'coef_'):
+        # Для LogisticRegression
+        if len(model.coef_.shape) > 1:
+            # Мультиклассовая классификация
+            for i in range(model.coef_.shape[0]):
+                plt.bar(range(len(feature_names)), model.coef_[i], alpha=0.7, label=f'Class {i}')
+            plt.legend()
+        else:
+            plt.bar(range(len(feature_names)), model.coef_)
+        plt.xticks(range(len(feature_names)), feature_names, rotation=45)
+        plt.title('Feature Coefficients')
+    
+    plt.tight_layout()
+    return plt.gcf()
+
+def main():
+    parser = argparse.ArgumentParser(description='Train classification models on Iris dataset')
+    parser.add_argument('--model', type=str, default='logreg', 
+                       choices=['logreg', 'randomforest', 'knn'],
+                       help='Model type')
+    parser.add_argument('--scaler', type=str, default='standard',
+                       choices=['standard', 'minmax', 'none'],
+                       help='Scaler type')
+    parser.add_argument('--features', type=str, default='base',
+                       choices=['base', 'scaled', 'poly'],
+                       help='Feature engineering type')
+    parser.add_argument('--seed', type=int, default=42,
+                       help='Random seed')
+    parser.add_argument('--cv_folds', type=int, default=5,
+                       help='Number of cross-validation folds')
+    
+    args = parser.parse_args()
     
     # Загрузка данных
-    iris = load_iris()
-    X, y = iris.data, iris.target
-    feature_names = iris.feature_names
-    target_names = iris.target_names
+    X, y, class_names = load_data()
     
-    # Инженерия признаков
-    X, feature_names = engineer_features(X, feature_names, args.features)
+    # Создание признаков
+    X_processed = create_features(X, args.features, args.scaler if args.features == 'scaled' else None)
     
-    # Разделение на train/test
+    # Разделение данных
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=args.seed, stratify=y
+        X_processed, y, test_size=0.2, random_state=args.seed, stratify=y
     )
-    
-    # Масштабирование признаков
-    scaler = get_scaler(args.scaler)
-    if scaler:
-        X_train = scaler.fit_transform(X_train)
-        X_test = scaler.transform(X_test)
 
-    model, model_params = get_model(args.model, args.seed)
-    
-    experiment_name = f"Iris-{args.model}-{args.scaler}-{args.features}"
+    # Настройка MLflow
+    experiment_name = "iris-classification"
+    mlflow.set_tracking_uri("http://localhost:5000")
+
+    # Создаем эксперимент, если его нет
+    try:
+        experiment = mlflow.get_experiment_by_name(experiment_name)
+        if experiment is None:
+            raise Exception("Experiment not found")
+        experiment_id = experiment.experiment_id
+    except:
+        experiment_id = mlflow.create_experiment(experiment_name)
+
     mlflow.set_experiment(experiment_name)
-
+    
     with mlflow.start_run():
+        # Логирование параметров
         mlflow.log_params({
             'model': args.model,
-            'scaler': args.scaler,
+            'scaler': args.scaler if args.features == 'scaled' else 'none',
             'features': args.features,
             'seed': args.seed,
+            'cv_folds': args.cv_folds,
             'test_size': 0.2
         })
-        mlflow.log_params(model_params)
         
-        mlflow.log_params({
-            'dataset': 'Iris',
-            'n_samples': len(X),
-            'n_features': X.shape[1],
-            'n_classes': len(np.unique(y)),
-            'feature_set': args.features
+        # Добавление тегов
+        mlflow.set_tags({
+            'purpose': 'ablation',
+            'candidate': 'true',
+            'dataset': 'iris'
         })
-
+        
+        # Получение модели
+        model = get_model(args.model, args.seed)
+        
+        # Включение autolog
+        mlflow.sklearn.autolog()
+        
+        # Кросс-валидация
+        kf = KFold(n_splits=args.cv_folds, shuffle=True, random_state=args.seed)
+        cv_accuracy = cross_val_score(model, X_train, y_train, cv=kf, scoring='accuracy')
+        cv_f1 = cross_val_score(model, X_train, y_train, cv=kf, scoring='f1_macro')
+        
+        # Обучение модели
         model.fit(X_train, y_train)
-
+        
+        # Предсказания
         y_pred = model.predict(X_test)
-        y_proba = model.predict_proba(X_test) if hasattr(model, 'predict_proba') else None
         
+        # Метрики
         accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred, average='weighted')
-        recall = recall_score(y_test, y_pred, average='weighted')
-        f1 = f1_score(y_test, y_pred, average='weighted')
+        f1_macro = f1_score(y_test, y_pred, average='macro')
         
+        # Логирование метрик
         mlflow.log_metrics({
             'accuracy': accuracy,
-            'precision': precision,
-            'recall': recall,
-            'f1_score': f1
+            'f1_macro': f1_macro,
+            'cv_accuracy_mean': cv_accuracy.mean(),
+            'cv_accuracy_std': cv_accuracy.std(),
+            'cv_f1_mean': cv_f1.mean(),
+            'cv_f1_std': cv_f1.std()
         })
+        
+        # Визуализации
+        # Матрица ошибок
+        cm_fig = plot_confusion_matrix(y_test, y_pred, class_names)
+        mlflow.log_figure(cm_fig, "confusion_matrix.png")
+        plt.close(cm_fig)
+        
+        # Важность признаков
+        if args.model in ['logreg', 'randomforest']:
+            fi_fig = plot_feature_importance(model, X_processed.columns.tolist(), args.model)
+            mlflow.log_figure(fi_fig, "feature_importance.png")
+            plt.close(fi_fig)
+        
+        # Permutation importance
+        try:
+            perm_importance = permutation_importance(model, X_test, y_test, n_repeats=10, random_state=args.seed)
+            sorted_idx = perm_importance.importances_mean.argsort()[::-1]
+            
+            plt.figure(figsize=(10, 6))
+            plt.bar(range(len(sorted_idx)), perm_importance.importances_mean[sorted_idx])
+            plt.xticks(range(len(sorted_idx)), [X_processed.columns[i] for i in sorted_idx], rotation=45)
+            plt.title('Permutation Importance')
+            plt.tight_layout()
+            
+            perm_fig = plt.gcf()
+            mlflow.log_figure(perm_fig, "permutation_importance.png")
+            plt.close(perm_fig)
+        except Exception as e:
+            print(f"Permutation importance failed: {e}")
+        
+        # Classification report
+        report = classification_report(y_test, y_pred, target_names=class_names, output_dict=True)
+        mlflow.log_dict(report, "classification_report.json")
+        
+        # Создание отчета
+        report_text = f"""
+# Model Report {args.model}
 
-        create_and_log_plots(y_test, y_pred, target_names)
-        create_and_log_classification_report(y_test, y_pred, target_names)
+## Parameters
+- Model: {args.model}
+- Features: {args.features}
+- Scaler: {args.scaler if args.features == 'scaled' else 'none'}
+- Random seed: {args.seed}
+- CV folds: {args.cv_folds}
+
+## Metrics
+- Accuracy: {accuracy:.4f}
+- Macro F1: {f1_macro:.4f}
+- CV Accuracy: {cv_accuracy.mean():.4f} ± {cv_accuracy.std():.4f}
+- CV F1: {cv_f1.mean():.4f} ± {cv_f1.std():.4f}
+
+## Conclusions
+The model showed {'good' if accuracy > 0.9 else 'satisfactory'} results.
+Recommended {'use in production' if accuracy > 0.95 else 'conduct additional experiments'}.
+"""
         
-        if hasattr(model, 'feature_importances_'):
-            create_and_log_feature_importance(model, feature_names)
+        with open("report.md", "w") as f:
+            f.write(report_text)
+        mlflow.log_artifact("report.md")
         
+        # Логирование модели
         signature = infer_signature(X_train, model.predict(X_train))
-
-        model_name = f"Iris_{args.model}_{args.scaler}_{args.features}"
         mlflow.sklearn.log_model(
-            sk_model=model,
-            artifact_path="model",
+            model, 
+            "model", 
             signature=signature,
-            registered_model_name=model_name,
-            input_example=X_train[:5]
+            input_example=X_train.iloc[:5],
+            registered_model_name=f"iris-{args.model}-{args.features}"
         )
         
-        if scaler:
-            mlflow.sklearn.log_model(
-                sk_model=scaler,
-                artifact_path="scaler"
-            )
-        
-        print(f"Модель успешно обучена! Accuracy: {accuracy:.4f}")
-
-def create_and_log_plots(y_test, y_pred, target_names):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    cm = confusion_matrix(y_test, y_pred)
-    im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-    ax.figure.colorbar(im, ax=ax)
-    
-    ax.set(xticks=np.arange(cm.shape[1]),
-           yticks=np.arange(cm.shape[0]),
-           xticklabels=target_names, 
-           yticklabels=target_names,
-           title='Confusion Matrix',
-           ylabel='True label',
-           xlabel='Predicted label')
-    
-    thresh = cm.max() / 2.
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            ax.text(j, i, format(cm[i, j], 'd'),
-                    ha="center", va="center",
-                    color="white" if cm[i, j] > thresh else "black")
-    
-    plt.tight_layout()
-    mlflow.log_figure(fig, "plots/confusion_matrix.png")
-    plt.close(fig)
-
-def create_and_log_classification_report(y_test, y_pred, target_names):
-    report = classification_report(y_test, y_pred, target_names=target_names, output_dict=True)
-    report_text = classification_report(y_test, y_pred, target_names=target_names)
-    mlflow.log_text(report_text, "reports/classification_report.txt")
-    
-    for class_name in target_names:
-        if class_name in report:
-            mlflow.log_metric(f"precision_{class_name}", report[class_name]['precision'])
-            mlflow.log_metric(f"recall_{class_name}", report[class_name]['recall'])
-            mlflow.log_metric(f"f1_{class_name}", report[class_name]['f1-score'])
-
-def create_and_log_feature_importance(model, feature_names):
-    fig, ax = plt.subplots(figsize=(12, 6))
-    importances = model.feature_importances_
-    indices = np.argsort(importances)[::-1]
-    
-    ax.set_title("Feature Importance")
-    ax.bar(range(len(importances)), importances[indices])
-    ax.set_xticks(range(len(importances)))
-    ax.set_xticklabels([feature_names[i] for i in indices], rotation=45, ha='right')
-    
-    plt.tight_layout()
-    mlflow.log_figure(fig, "plots/feature_importance.png")
-    plt.close(fig)
-    
-    importance_dict = dict(zip(feature_names, importances))
-    mlflow.log_dict(importance_dict, "artifacts/feature_importance.json")
+        print(f"Run completed: {mlflow.active_run().info.run_id}")
+        print(f"Accuracy: {accuracy:.4f}, F1 Macro: {f1_macro:.4f}")
 
 if __name__ == "__main__":
-    args = parse_args()
-    train_model(args)
+    main()

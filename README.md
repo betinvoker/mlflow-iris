@@ -18,11 +18,21 @@ _docker run -p 5000:5000  mlflow-server_
 
 ## Примеры использования:
 ---
-#### Обучение RandomForest (по умолчанию)
-_python src/train.py --model RandomForest_
-#### Обучение LogisticRegression
-_python src/train.py --model LogisticRegression_
-#### Обучение KNN с KFold валидацией
-_python src/train.py --model KNN --validation kfold_
 #### Обучение с кастомными параметрами
-_python src/train.py --model RandomForest --scaler minmax --features only_petal --seed 123_
+_python src/train.py --model randomforest --scaler standard --features base --seed 45_
+
+## Скрины эксперимента в MLflow:
+---
+![Alt Docker](images/docker.png)
+
+![Alt Experiments](images/experiments.png)
+
+![Alt Experiment](images/experiment.png)
+
+![Alt Artifacts](images/artifacts-experiment.png)
+
+![Alt Overview](images/overview-experiment.png)
+
+![Alt Models](images/models.png)
+
+![Alt Model](images/model.png)
