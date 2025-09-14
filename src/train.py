@@ -133,7 +133,7 @@ def main():
 
     # Настройка MLflow
     experiment_name = "iris-classification"
-    mlflow.set_tracking_uri("http://localhost:5000")
+    mlflow.set_tracking_uri("http://localhost:5001")
 
     # Создаем эксперимент, если его нет
     try:
@@ -212,7 +212,7 @@ def main():
             perm_importance = permutation_importance(model, X_test, y_test, n_repeats=10, random_state=args.seed)
             sorted_idx = perm_importance.importances_mean.argsort()[::-1]
             
-            plt.figure(figsize=(10, 6))
+            plt.figure(figsize=(10, 10))
             plt.bar(range(len(sorted_idx)), perm_importance.importances_mean[sorted_idx])
             plt.xticks(range(len(sorted_idx)), [X_processed.columns[i] for i in sorted_idx], rotation=45)
             plt.title('Permutation Importance')
