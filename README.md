@@ -23,6 +23,12 @@ _docker run -p 5001:5001  mlflow-server_
 ##### Пример комманды запуска
 _python src/train.py --model randomforest --scaler standard --features base --seed 45_
 
+## Сравнение моделей logreg|randomforest|knn:
+---
+Точность предсказаний лучше у модели knn (0.9333).
+
+![Alt Model](images/comparison-of-models.png)
+
 ## Скрины эксперимента в MLflow:
 ---
 ![Alt Docker](images/docker.png)
