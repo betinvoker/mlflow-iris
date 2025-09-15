@@ -29,6 +29,8 @@ _python src/train.py --model randomforest --scaler standard --features base --se
 
 ![Alt Model](images/comparison-of-models.png)
 
+![Alt Model](images/learning_curve.png)
+
 ## Скрины эксперимента в MLflow:
 ---
 ![Alt Docker](images/docker.png)

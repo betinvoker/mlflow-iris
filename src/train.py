@@ -14,6 +14,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, classification_report
 from sklearn.inspection import permutation_importance
+from sklearn.model_selection import learning_curve
 import mlflow
 import mlflow.sklearn
 from mlflow.models import infer_signature
@@ -145,7 +146,7 @@ def main():
         experiment_id = mlflow.create_experiment(experiment_name)
 
     mlflow.set_experiment(experiment_name)
-    
+  
     with mlflow.start_run():
         # Логирование параметров
         mlflow.log_params({
@@ -159,6 +160,7 @@ def main():
         
         # Добавление тегов
         mlflow.set_tags({
+            'model': args.model,
             'purpose': 'ablation',
             'candidate': 'true',
             'dataset': 'iris'
@@ -224,6 +226,35 @@ def main():
         except Exception as e:
             print(f"Permutation importance failed: {e}")
         
+        # Линейная диаграмма точности предсказаний по эпохам
+        try:
+            train_sizes, train_scores, test_scores = learning_curve(
+                model, X_train, y_train,
+                cv=args.cv_folds,
+                scoring="accuracy",
+                n_jobs=-1,
+                train_sizes=np.linspace(0.1, 1.0, 10)  # 10 точек от 10% до 100% данных
+            )
+
+            train_scores_mean = np.mean(train_scores, axis=1)
+            test_scores_mean = np.mean(test_scores, axis=1)
+
+            plt.figure(figsize=(6,4))
+            plt.plot(train_sizes, train_scores_mean, marker='o', label="Train Accuracy")
+            plt.plot(train_sizes, test_scores_mean, marker='s', label="CV Accuracy")
+            plt.title(f"Learning Curve (model {args.model})")
+            plt.xlabel("Training examples")
+            plt.ylabel("Accuracy")
+            plt.ylim(0, 1.05)
+            plt.grid(True)
+            plt.legend()
+
+            perm_fig = plt.gcf()
+            mlflow.log_figure(perm_fig, f"learning_curve.png")
+            plt.close(perm_fig)
+        except Exception as e:
+            print(f"Ошибка при построении learning curve: {e}")
+
         # Classification report
         report = classification_report(y_test, y_pred, target_names=class_names, output_dict=True)
         mlflow.log_dict(report, "classification_report.json")
