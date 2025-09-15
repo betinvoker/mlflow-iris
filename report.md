@@ -11,8 +11,8 @@
 ## Metrics
 - Accuracy: 0.9333
 - Macro F1: 0.9327
-- CV Accuracy: 0.9583 Â± 0.0645
-- CV F1: 0.9613 Â± 0.0575
+- CV Accuracy: 0.9583 ± 0.0645
+- CV F1: 0.9613 ± 0.0575
 
 ## Conclusions
 The model showed good results.

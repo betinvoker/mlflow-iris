@@ -242,7 +242,7 @@ def main():
             plt.figure(figsize=(6,4))
             plt.plot(train_sizes, train_scores_mean, marker='o', label="Train Accuracy")
             plt.plot(train_sizes, test_scores_mean, marker='s', label="CV Accuracy")
-            plt.title("Learning Curve")
+            plt.title(f"Learning Curve (model {args.model})")
             plt.xlabel("Training examples")
             plt.ylabel("Accuracy")
             plt.ylim(0, 1.05)
@@ -250,7 +250,7 @@ def main():
             plt.legend()
 
             perm_fig = plt.gcf()
-            mlflow.log_figure(perm_fig, "learning_curve.png")
+            mlflow.log_figure(perm_fig, f"learning_curve.png")
             plt.close(perm_fig)
         except Exception as e:
             print(f"Ошибка при построении learning curve: {e}")
