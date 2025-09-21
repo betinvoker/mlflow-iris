@@ -64,18 +64,6 @@ def get_model(model_name, seed=42):
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
-def plot_confusion_matrix(y_true, y_pred, class_names):
-    """Построение матрицы ошибок"""
-    cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=class_names, yticklabels=class_names)
-    plt.title('Confusion Matrix')
-    plt.ylabel('True Label')
-    plt.xlabel('Predicted Label')
-    plt.tight_layout()
-    return plt.gcf()
-
 def plot_feature_importance(model, feature_names, model_name):
     """Построение важности признаков"""
     plt.figure(figsize=(10, 6))
@@ -198,11 +186,6 @@ def main():
         })
         
         # Визуализации
-        # Матрица ошибок
-        cm_fig = plot_confusion_matrix(y_test, y_pred, class_names)
-        mlflow.log_figure(cm_fig, "confusion_matrix.png")
-        plt.close(cm_fig)
-        
         # Важность признаков
         if args.model in ['logreg', 'randomforest']:
             fi_fig = plot_feature_importance(model, X_processed.columns.tolist(), args.model)

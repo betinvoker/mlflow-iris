@@ -1,0 +1,11 @@
+# Исключить папки
+.git/
+env/
+images/
+
+# Исключить файлы
+Dockerfile
+README.md
+requirements.txt
+.dockerignore
+.gitignore

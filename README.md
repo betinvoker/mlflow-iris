@@ -12,6 +12,9 @@ _pip install -r requirements.txt_
 _docker build -t mlflow-server ._
 #### 2. Запуск докера
 _docker run -p 5001:5001  mlflow-server_
+#### 3. Запуск MLflow UI
+_mlflow ui --host localhost --port 5001_
+
 ## Примеры использования:
 ---
 #### Обучение с кастомными параметрами
